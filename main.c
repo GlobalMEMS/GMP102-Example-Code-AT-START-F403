@@ -189,8 +189,6 @@ int main(void)
   RCC_ClockType RccClkSource;
   bus_support_t gmp102_bus;
   float fCalibParam[GMP102_CALIBRATION_PARAMETER_COUNT], fT_Celsius, fP_Pa, fAlt_m;
-  s16 s16Value[GMP102_CALIBRATION_PARAMETER_COUNT];
-  u8 u8Power[GMP102_CALIBRATION_PARAMETER_COUNT];
   s16 s16T;
   s32 s32P;
 
@@ -221,7 +219,6 @@ int main(void)
 
   /* GMP102 get the pressure calibration parameters */
   gmp102_get_calibration_param(fCalibParam);
-  gmp102_get_calibration_param_fixed_point(s16Value, u8Power);
 
   /* GMP102 initialization setup */
   gmp102_initialization();
