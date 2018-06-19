@@ -223,8 +223,15 @@ int main(void)
   /* GMP102 initialization setup */
   gmp102_initialization();
 
-  /* GMP102 set P OSR to 1024 */
-  gmp102_set_P_OSR(GMP102_P_OSR_1024);
+	/* Select one of the following modes to suit your appliation */
+	/* Refer to https://github.com/GlobalMEMS/Application-Notes/blob/master/GMP102%20Application%20Note%20on%20OSR%20setting%20V1.0.pdf */
+	/* for more decriptions.                                     */
+	/*                                                           */
+	//gmp102_set_P_OSR(GMP102_P_OSR_256);   //Ultra low power mode
+  gmp102_set_P_OSR(GMP102_P_OSR_1024);  //Low power mode
+	//gmp102_set_P_OSR(GMP102_P_OSR_4096);  //Standard resolution
+	//gmp102_set_P_OSR(GMP102_P_OSR_8192);  //High resolution
+	//gmp102_set_P_OSR(GMP102_P_OSR_16384); //Ultra high resolution
 
   /* set sea leve reference pressure */
   //If not set, use default 101325 Pa for pressure altitude calculation
