@@ -37,126 +37,23 @@
 #include "bus_support.h"
 #include "gmp102.h"
 #include "pSensor_util.h"
+#include "Lcd_Driver.h"
+#include "GUI.h"
+#include "usart.h"
+#include "delay.h"
+#include "key.h"
+#include "string.h"
+#include "math.h"
 
 /* Private macro -------------------------------------------------------------*/
 
 /* global variables ---------------------------------------------------------*/
 
 /* Private variables ---------------------------------------------------------*/
-USART_InitType USART_InitStructure;
-static __IO uint32_t TimingDelay;
 
 /* Private function prototypes -----------------------------------------------*/
 
 /* Private functions ---------------------------------------------------------*/
-/**
- * @brief  Inserts a delay time.
- * @param  nTime: specifies the delay time length, in milliseconds.
- * @retval None
- */
-void Delay(__IO uint32_t nTime)
-{
-  TimingDelay = nTime;
-
-  while(TimingDelay != 0);
-}
-
-/**
- * @brief  Decrements the TimingDelay variable.
- * @param  None
- * @retval None
- */
-void TimingDelay_Decrement(void)
-{
-  if (TimingDelay != 0x00){
-    TimingDelay--;
-  }
-}
-
-/**
- * @brief  Retargets the C library printf function to the USART1.
- * @param
- * @retval
- */
-int fputc(int ch, FILE *f)
-{
-  while((USART1->STS & 0X40) == 0)
-    ;
-
-  USART1->DT = (u8)ch;
-  return ch;
-}
-
-/**
- * @brief  Configures the nested vectored interrupt controller.
- * @param  None
- * @retval None
- */
-void NVIC_Configuration(void)
-{
-  NVIC_InitType NVIC_InitStructure;
-
-  /* Enable the USARTx Interrupt */
-  NVIC_InitStructure.NVIC_IRQChannel = USART1_IRQn;
-  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
-  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
-  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-  NVIC_Init(&NVIC_InitStructure);
-}
-
-/**
- * @brief  Configures COM port.
- * @param  None
- * @retval None
- */
-void USART_COMInit()
-{
-
-  GPIO_InitType GPIO_InitStructure;
-
-  /* USARTx configured as follow:
-     - BaudRate = 115200 baud
-     - Word Length = 8 Bits
-     - One Stop Bit
-     - No parity check
-     - Hardware flow control disabled (RTS and CTS signals)
-     - Receive and transmit enabled
-  */
-  USART_InitStructure.USART_BaudRate = 115200;
-  USART_InitStructure.USART_WordLength = USART_WordLength_8b;
-  USART_InitStructure.USART_StopBits = USART_StopBits_1;
-  USART_InitStructure.USART_Parity = USART_Parity_No;
-  USART_InitStructure.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
-  USART_InitStructure.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
-
-
-  /* Enable GPIO clock */
-  RCC_APB2PeriphClockCmd(RCC_APB2PERIPH_GPIOA, ENABLE);
-
-  /* Enable UART clock */
-  RCC_APB2PeriphClockCmd(RCC_APB2PERIPH_USART1, ENABLE);
-
-  /* Configure USART Tx as alternate function push-pull */
-  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
-  GPIO_InitStructure.GPIO_Pins = TX_PIN_NUMBER;
-  GPIO_InitStructure.GPIO_MaxSpeed = GPIO_MaxSpeed_50MHz;
-  GPIO_Init(TXRX_GPIOx, &GPIO_InitStructure);
-
-  /* Configure USART Rx as input floating */
-  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
-  GPIO_InitStructure.GPIO_Pins = RX_PIN_NUMBER;
-  GPIO_Init(TXRX_GPIOx, &GPIO_InitStructure);
-
-  /* USART configuration */
-  USART_Init(USART1, &USART_InitStructure);
-
-  /* Enable USART */
-  USART_Cmd(USART1, ENABLE);
-
-  /* Enable the EVAL_COM1 Receive interrupt: this interrupt is generated when the
-     EVAL_COM1 receive data register is not empty */
-  USART_INTConfig(USART1, USART_INT_RDNE, ENABLE);
-}
 
 #ifdef  USE_FULL_ASSERT
 
@@ -179,6 +76,61 @@ void assert_failed(uint8_t* file, uint32_t line)
 
 #endif
 
+const u16 RESOLUTION_X = 128;
+const u16 RESOLUTION_Y = 120;
+const u16 FONT_HEIGHT = 16;
+const u16 LINE_HEIGHT = FONT_HEIGHT + 2;
+const u16 MAX_DISPLAY_ITEM = 9;
+void showMsg(u16 x, u16 line, u8* str, u16 color, u8 reDraw){
+
+  int i;
+  char* subStr;
+
+  if(reDraw) Lcd_Clear(GRAY0);
+
+  subStr = strtok((char*)str, "\n");
+
+  for(i = line; subStr; ++i){
+    Gui_DrawFont_GBK16(x, LINE_HEIGHT * i, color, GRAY0, (u8*)subStr);
+    subStr = strtok(NULL, "\n");
+  }
+}
+
+void floatCatToStr(float fIn, u8 precision, u8* outStr){
+
+  s32 i = 0;
+  float fTmp;
+  s32 s32Dec, s32Dig;
+
+  if(fIn < 0){
+    fIn = -fIn;
+    strcat((char*)outStr, "-");
+  }
+
+  s32Dec = (s32)fIn;
+  fTmp = fIn - s32Dec;
+  for(i = 0; i < precision; ++i)
+    fTmp *= 10;
+  s32Dig = (s32)(fTmp + 0.5f);
+
+  itoa(s32Dec, &outStr[strlen((const char*)outStr)]);
+  strcat((char*)outStr, ".");
+
+  fTmp = 1;
+  for(i = 0; i < precision; ++i)
+    fTmp *= 10;
+  for(i = 0; i < precision; ++i){
+    fTmp /= 10;
+    if(s32Dig < fTmp){
+      strcat((char*)outStr, "0");
+    }
+    else{
+      itoa(s32Dig, &outStr[strlen((const char*)outStr)]);
+      break;
+    }
+  }
+}
+
 /**
  * @brief   Main program
  * @param  None
@@ -186,26 +138,25 @@ void assert_failed(uint8_t* file, uint32_t line)
  */
 int main(void)
 {
-  RCC_ClockType RccClkSource;
   bus_support_t gmp102_bus;
   float fCalibParam[GMP102_CALIBRATION_PARAMETER_COUNT], fT_Celsius, fP_Pa, fAlt_m;
   s16 s16T;
   s32 s32P;
+  u8 str[64];
 
-  /* NVIC configuration */
-  NVIC_Configuration();
-
-  /* USART COM configuration */
-  USART_COMInit();
+  /* System Initialization */
+  SystemInit();
 
   /* I2C1 initialization */
   I2C1_Init();
 
-  RCC_GetClocksFreq(&RccClkSource);
-  if (SysTick_Config(RccClkSource.AHBCLK_Freq / 1000)){
-    /* Capture error */
-    while(1);
-  }
+  /* Init Key */
+  KEY_Init();
+
+  /* Initialize the LCD */
+  uart_init(19200);
+  delay_init();
+  Lcd_Init();
 
   /* GMP102 I2C bus setup */
   bus_init_I2C1(&gmp102_bus, GMP102_8BIT_I2C_ADDR);  //Initialize bus support to I2C1
@@ -215,7 +166,7 @@ int main(void)
   gmp102_soft_reset();
 
   /* Wait 100ms for reset complete */
-  Delay(100);
+  delay_ms(100);
 
   /* GMP102 get the pressure calibration parameters */
   gmp102_get_calibration_param(fCalibParam);
@@ -223,43 +174,71 @@ int main(void)
   /* GMP102 initialization setup */
   gmp102_initialization();
 
-	/* Select one of the following modes to suit your appliation */
-	/* Refer to https://github.com/GlobalMEMS/Application-Notes/blob/master/GMP102%20Application%20Note%20on%20OSR%20setting%20V1.0.pdf */
-	/* for more decriptions.                                     */
-	/*                                                           */
-	//gmp102_set_P_OSR(GMP102_P_OSR_256);   //Ultra low power mode
+  /* Select one of the following modes to suit your appliation */
+  /* Refer to https://github.com/GlobalMEMS/Application-Notes/blob/master/GMP102%20Application%20Note%20on%20OSR%20setting%20V1.0.pdf */
+  /* for more decriptions.                                     */
+  /*                                                           */
+  //gmp102_set_P_OSR(GMP102_P_OSR_256);   //Ultra low power mode
   gmp102_set_P_OSR(GMP102_P_OSR_1024);  //Low power mode
-	//gmp102_set_P_OSR(GMP102_P_OSR_4096);  //Standard resolution
-	//gmp102_set_P_OSR(GMP102_P_OSR_8192);  //High resolution
-	//gmp102_set_P_OSR(GMP102_P_OSR_16384); //Ultra high resolution
+  //gmp102_set_P_OSR(GMP102_P_OSR_4096);  //Standard resolution
+  //gmp102_set_P_OSR(GMP102_P_OSR_8192);  //High resolution
+  //gmp102_set_P_OSR(GMP102_P_OSR_16384); //Ultra high resolution
 
   /* set sea leve reference pressure */
   //If not set, use default 101325 Pa for pressure altitude calculation
   set_sea_level_pressure_base(100110.f);
 
+  strcpy((char*)str, "P, T(code, code):");
+  showMsg(0, 0, str, BLACK, 1);
+  strcpy((char*)str, "P (Pa):");
+  showMsg(0, 2, str, BLACK, 0);
+  strcpy((char*)str, "T (C):");
+  showMsg(0, 4, str, BLACK, 0);
+  strcpy((char*)str, "Atl (m):");
+  showMsg(0, 6, str, BLACK, 0);
+
   while (1){
 
     /* Measure P */
     gmp102_measure_P(&s32P);
-    printf("P(code)=%d\r", s32P);
 
     /* Mesaure T */
     gmp102_measure_T(&s16T);
-    printf("T(code)=%d\r", s16T);
 
     /* Compensation */
     gmp102_compensation(s16T, s32P, fCalibParam, &fT_Celsius, &fP_Pa);
-    printf("P(Pa)=%.1f\r", fP_Pa);
-    printf("T(C)=%.3f\r", fT_Celsius);
 
     /* Pressure Altitude */
     fAlt_m = pressure2Alt(fP_Pa);
-    printf("Alt(m)=%.3f\r", fAlt_m);
 
-    printf("\n");
+    /* User message: Raw data*/
+    strcpy((char*)str, "");
+    itoa(s32P, &str[strlen((const char*)str)]);
+    strcat((char*)str, ", ");
+    itoa(s16T, &str[strlen((const char*)str)]);
+    strcat((char*)str, "       ");
+    showMsg(0, 1, str, BLUE, 0);
+
+    /* User message: compensated P in Pa*/
+    strcpy((char*)str, "");
+    floatCatToStr(fP_Pa, 1, str);
+    strcat((char*)str, "       ");
+    showMsg(0, 3, str, BLUE, 0);
+
+    /* User message: T in Celsius */
+    strcpy((char*)str, "");
+    floatCatToStr(fT_Celsius, 2, str);
+    strcat((char*)str, "       ");
+    showMsg(0, 5, str, BLUE, 0);
+
+    /* User message: Altitude */
+    strcpy((char*)str, "");
+    floatCatToStr(fAlt_m, 2, str);
+    strcat((char*)str, "       ");
+    showMsg(0, 7, str, BLUE, 0);
 
     /* Delay 1 sec */
-    Delay(1000);
+    delay_ms(1000);
   }
 }
 

@@ -4,7 +4,7 @@ AT-START-F403 + GMP102 example code
 Requirements
 -----------
 - AT-START-F403 development board
-- GMP102
+- Sensor Fusion Arduino Daughter Board V1.0: GMP102 is on the sensor board
 
 I2C Connections
 ---------------
