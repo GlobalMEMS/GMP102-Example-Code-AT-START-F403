@@ -140,8 +140,10 @@ int main(void)
 {
   bus_support_t gmp102_bus;
   float fCalibParam[GMP102_CALIBRATION_PARAMETER_COUNT], fT_Celsius, fP_Pa, fAlt_m;
+	s16 s16Value[GMP102_CALIBRATION_PARAMETER_COUNT];
+	u8 u8Power[GMP102_CALIBRATION_PARAMETER_COUNT];
   s16 s16T;
-  s32 s32P;
+  s32 s32P, s32P64_Pa, s32P32_Pa, s32T;
   u8 str[64];
 
   /* System Initialization */
@@ -170,6 +172,9 @@ int main(void)
 
   /* GMP102 get the pressure calibration parameters */
   gmp102_get_calibration_param(fCalibParam);
+	
+	/* GMP102 get the pressure calibration parameters, fixed point format */
+	gmp102_get_calibration_param_fixed_point(s16Value, u8Power);
 
   /* GMP102 initialization setup */
   gmp102_initialization();
@@ -191,11 +196,15 @@ int main(void)
   strcpy((char*)str, "P, T(code, code):");
   showMsg(0, 0, str, BLACK, 1);
   strcpy((char*)str, "P (Pa):");
-  showMsg(0, 2, str, BLACK, 0);
-  strcpy((char*)str, "T (C):");
+  showMsg(0, 3, str, BLACK, 0);
+	strcpy((char*)str, "P64 Pa:");
   showMsg(0, 4, str, BLACK, 0);
+	strcpy((char*)str, "P32 Pa:");
+  showMsg(0, 5, str, BLACK, 0);
+  strcpy((char*)str, "T (C):");
+  showMsg(0, 7, str, BLACK, 0);
   strcpy((char*)str, "Atl (m):");
-  showMsg(0, 6, str, BLACK, 0);
+  showMsg(0, 8, str, BLACK, 0);
 
   while (1){
 
@@ -207,6 +216,12 @@ int main(void)
 
     /* Compensation */
     gmp102_compensation(s16T, s32P, fCalibParam, &fT_Celsius, &fP_Pa);
+		
+		/* Compensation s64 */
+		gmp102_compensation_fixed_point_s64(s16T, s32P, s16Value, u8Power, &s32T, &s32P64_Pa);
+		
+		/* Compensation s32 */
+		gmp102_compensation_fixed_point_s32(s16T, s32P, s16Value, u8Power, &s32T, &s32P32_Pa);		
 
     /* Pressure Altitude */
     fAlt_m = pressure2Alt(fP_Pa);
@@ -223,19 +238,31 @@ int main(void)
     strcpy((char*)str, "");
     floatCatToStr(fP_Pa, 1, str);
     strcat((char*)str, "       ");
-    showMsg(0, 3, str, BLUE, 0);
+    showMsg(60, 3, str, BLUE, 0);
+		
+		/* User message: compensated P64 in Pa*/
+    strcpy((char*)str, "");
+    itoa(s32P64_Pa, &str[strlen((const char*)str)]);
+    strcat((char*)str, "       ");
+    showMsg(60, 4, str, BLUE, 0);
+		
+		/* User message: compensated P64 in Pa*/
+    strcpy((char*)str, "");
+    itoa(s32P32_Pa, &str[strlen((const char*)str)]);
+    strcat((char*)str, "       ");
+    showMsg(60, 5, str, BLUE, 0);		
 
     /* User message: T in Celsius */
     strcpy((char*)str, "");
     floatCatToStr(fT_Celsius, 2, str);
     strcat((char*)str, "       ");
-    showMsg(0, 5, str, BLUE, 0);
+    showMsg(70, 7, str, BLUE, 0);
 
     /* User message: Altitude */
     strcpy((char*)str, "");
     floatCatToStr(fAlt_m, 2, str);
     strcat((char*)str, "       ");
-    showMsg(0, 7, str, BLUE, 0);
+    showMsg(70, 8, str, BLUE, 0);
 
     /* Delay 1 sec */
     delay_ms(1000);
